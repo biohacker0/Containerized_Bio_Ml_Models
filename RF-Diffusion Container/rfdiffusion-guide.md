@@ -39,6 +39,10 @@ docker pull ghcr.io/biohacker0/rfdiffusion-public:public-v1
 # Create directories for inputs, outputs, and models
 mkdir -p $HOME/rfdiffusion/{inputs,outputs,models}
 
+# Download sample PDB file to inputs directory
+echo "Downloading sample PDB file to inputs directory..."
+wget -P $HOME/rfdiffusion/inputs https://files.rcsb.org/download/5TPN.pdb
+
 # Download models (one-time setup)
 cd $HOME/rfdiffusion/models
 wget http://files.ipd.uw.edu/pub/RFdiffusion/6f5902ac237024bdd0c176cb93063dc4/Base_ckpt.pt
@@ -65,6 +69,10 @@ Save the following script as `setup_rfdiffusion.sh` in your home directory to au
 # Create directory structure
 mkdir -p $HOME/rfdiffusion/{inputs,outputs,models,scripts}
 cd $HOME/rfdiffusion
+
+# Download sample PDB file to the inputs directory
+echo "Downloading sample PDB file to inputs directory..."
+wget -P $HOME/rfdiffusion/inputs https://files.rcsb.org/download/5TPN.pdb
 
 # Create the models download script
 cat > scripts/download_models.sh << 'EOF'
@@ -136,11 +144,11 @@ function show_examples() {
   echo "1. Generate a basic 150-residue protein:"
   echo "./scripts/run_rfdiffusion.sh basic_protein 'contigmap.contigs=[150-150]' inference.num_designs=5"
   echo
-  echo "2. Scaffold a motif (requires PDB file in inputs directory):"
-  echo "./scripts/run_rfdiffusion.sh motif_scaffold inference.input_pdb=/inputs/motif.pdb 'contigmap.contigs=[5-15/A10-25/30-40]' inference.num_designs=5"
+  echo "2. Scaffold a motif using the downloaded 5TPN.pdb:"
+  echo "./scripts/run_rfdiffusion.sh motif_scaffold inference.input_pdb=/inputs/5TPN.pdb 'contigmap.contigs=[5-15/A10-25/30-40]' inference.num_designs=5"
   echo
-  echo "3. Design a protein binder:"
-  echo "./scripts/run_rfdiffusion.sh binder inference.input_pdb=/inputs/target.pdb 'contigmap.contigs=[B1-100/0 100-100]' 'ppi.hotspot_res=[B30,B33,B34]' inference.num_designs=5"
+  echo "3. Design a protein binder using 5TPN.pdb as target:"
+  echo "./scripts/run_rfdiffusion.sh binder inference.input_pdb=/inputs/5TPN.pdb 'contigmap.contigs=[B1-100/0 100-100]' 'ppi.hotspot_res=[B30,B33,B34]' inference.num_designs=5"
   echo
   echo "4. Generate a symmetric tetramer:"
   echo "./scripts/run_rfdiffusion.sh symmetric_tetramer --config-name symmetry inference.symmetry=tetrahedral 'contigmap.contigs=[360]' inference.num_designs=1"
@@ -148,7 +156,7 @@ function show_examples() {
   echo "5. Design with reduced noise (better quality, less diversity):"
   echo "./scripts/run_rfdiffusion.sh high_quality 'contigmap.contigs=[150-150]' denoiser.noise_scale_ca=0.5 denoiser.noise_scale_frame=0.5 inference.num_designs=3"
   echo
-  echo "Run these commands from your rfdiffusion directory."
+  echo "Run these commands from your rfdiffusion directory.
 }
 
 show_examples
@@ -158,6 +166,7 @@ EOF
 chmod +x scripts/*.sh
 
 echo "RFdiffusion setup complete! Run ./scripts/download_models.sh to download model weights."
+echo "Sample PDB file (5TPN.pdb) has been downloaded to the inputs directory."
 echo "See ./scripts/examples.sh for usage examples."
 ```
 
