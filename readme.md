@@ -36,7 +36,6 @@ Each model has its own directory with specific setup instructions and documentat
 
 Each model has its own comprehensive documentation located in its directory:
 
-- **RFdiffusion**: See [RFdiffusion directory](./RF-Diffusion Container/)
 - Additional models: Coming soon
 
 ## Contributing
