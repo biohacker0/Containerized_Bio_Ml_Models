@@ -1,8 +1,8 @@
 # RFdiffusion: Complete User Guide
 
-A guide for using the my containerized version of RFdiffusion, a powerful protein structure generation tool developed by the Baker Lab that enables unconditional protein generation, motif scaffolding, binder design, and symmetric oligomer creation.
+A guide for using this containerized version of RFdiffusion, a powerful protein structure generation tool developed by the Baker Lab that enables unconditional protein generation, motif scaffolding, binder design, and symmetric oligomer creation.
 
-This is a cleaner version of official repo of theirs , making it easy to setup understand and run stuff.
+This is a cleaner version of the official repository, making it easy to set up, understand, and run experiments.
 
 ## Table of Contents
 
@@ -24,23 +24,22 @@ This is a cleaner version of official repo of theirs , making it easy to setup u
 - [Performance Tips](#performance-tips)
 - [Common Workflows](#common-workflows)
 
-My Container :
+Container Image:
 
 ```bash
-docker pull ghcr.io/biohacker0/rfdiffusion-public:public-v1
+docker pull ghcr.io/biohacker0/rfdiffusion-new:local
 ```
 
 ## Quick Start
 
 ```bash
 # Pull the container
-docker pull ghcr.io/biohacker0/rfdiffusion-public:public-v1
+docker pull ghcr.io/biohacker0/rfdiffusion-new:local
 
 # Create directories for inputs, outputs, and models
 mkdir -p $HOME/rfdiffusion/{inputs,outputs,models}
 
 # Download sample PDB file to inputs directory
-echo "Downloading sample PDB file to inputs directory..."
 wget -P $HOME/rfdiffusion/inputs https://files.rcsb.org/download/5TPN.pdb
 
 # Download models (one-time setup)
@@ -50,10 +49,12 @@ wget http://files.ipd.uw.edu/pub/RFdiffusion/e29311f6f1bf1af907f9ef9f44b8328b/Co
 
 # Basic run to generate a 150-residue protein
 docker run -it --rm --gpus all \
-  -v $HOME/rfdiffusion/models:/app/RFdiffusion/models \
-  -v $HOME/rfdiffusion/outputs:/outputs \
-  ghcr.io/biohacker0/rfdiffusion-public:public-v1 \
+  -v $HOME/rfdiffusion/models:/models:ro \
+  -v $HOME/rfdiffusion/inputs:/inputs:ro \
+  -v $HOME/rfdiffusion/outputs:/outputs:rw \
+  rfdiffusion:local \
   inference.output_prefix=/outputs/basic_test \
+  inference.model_directory_path=/models \
   'contigmap.contigs=[150-150]' \
   inference.num_designs=1
 ```
@@ -66,15 +67,26 @@ Save the following script as `setup_rfdiffusion.sh` in your home directory to au
 #!/bin/bash
 # Setup script for RFdiffusion
 
+# Configuration
+IMAGE_NAME="rfdiffusion:local"
+GHCR_IMAGE="ghcr.io/biohacker0/rfdiffusion-new:local"
+
 # Create directory structure
 mkdir -p $HOME/rfdiffusion/{inputs,outputs,models,scripts}
 cd $HOME/rfdiffusion
 
-# Download sample PDB file to the inputs directory
+# Download sample PDB file
 echo "Downloading sample PDB file to inputs directory..."
 wget -P $HOME/rfdiffusion/inputs https://files.rcsb.org/download/5TPN.pdb
 
-# Create the models download script
+# Pull image
+if ! docker image inspect $IMAGE_NAME >/dev/null 2>&1; then
+  echo "Pulling $GHCR_IMAGE..."
+  docker pull $GHCR_IMAGE
+  docker tag $GHCR_IMAGE $IMAGE_NAME
+fi
+
+# Create models download script
 cat > scripts/download_models.sh << 'EOF'
 #!/bin/bash
 MODELS_DIR=${1:-"$HOME/rfdiffusion/models"}
@@ -83,11 +95,9 @@ cd $MODELS_DIR
 
 echo "Downloading RFdiffusion model weights to $MODELS_DIR..."
 
-# Basic models (minimum required)
 wget -c http://files.ipd.uw.edu/pub/RFdiffusion/6f5902ac237024bdd0c176cb93063dc4/Base_ckpt.pt
 wget -c http://files.ipd.uw.edu/pub/RFdiffusion/e29311f6f1bf1af907f9ef9f44b8328b/Complex_base_ckpt.pt
 
-# Advanced models (optional)
 read -p "Download additional models for advanced features? (y/n) " answer
 if [[ $answer == "y" ]]; then
   wget -c http://files.ipd.uw.edu/pub/RFdiffusion/60f09a193fb5e5ccdc4980417708dbab/Complex_Fold_base_ckpt.pt
@@ -106,26 +116,31 @@ cat > scripts/run_rfdiffusion.sh << 'EOF'
 #!/bin/bash
 # Run RFdiffusion with standard paths
 
-# Directory setup
 MODELS_DIR=${MODELS_DIR:-"$HOME/rfdiffusion/models"}
 INPUTS_DIR=${INPUTS_DIR:-"$HOME/rfdiffusion/inputs"}
 OUTPUTS_DIR=${OUTPUTS_DIR:-"$HOME/rfdiffusion/outputs"}
 OUTPUT_NAME=${1:-"rfd_output"}
 shift
 
-# Check if models exist
+for dir in "$MODELS_DIR" "$INPUTS_DIR" "$OUTPUTS_DIR"; do
+  if [ ! -d "$dir" ]; then
+    echo "Error: Directory $dir does not exist."
+    exit 1
+  fi
+done
+
 if [ ! "$(ls -A $MODELS_DIR)" ]; then
   echo "No models found in $MODELS_DIR. Run ./scripts/download_models.sh first."
   exit 1
 fi
 
-# Run the container with standard mounts
 docker run -it --rm --gpus all \
-  -v $MODELS_DIR:/app/RFdiffusion/models \
-  -v $INPUTS_DIR:/inputs \
-  -v $OUTPUTS_DIR:/outputs \
-  ghcr.io/biohacker0/rfdiffusion-public:public-v1 \
+  -v $MODELS_DIR:/models:ro \
+  -v $INPUTS_DIR:/inputs:ro \
+  -v $OUTPUTS_DIR:/outputs:rw \
+  rfdiffusion:local \
   inference.output_prefix=/outputs/$OUTPUT_NAME \
+  inference.model_directory_path=/models \
   "$@"
 
 echo "Results saved to $OUTPUTS_DIR/$OUTPUT_NAME"
@@ -144,11 +159,11 @@ function show_examples() {
   echo "1. Generate a basic 150-residue protein:"
   echo "./scripts/run_rfdiffusion.sh basic_protein 'contigmap.contigs=[150-150]' inference.num_designs=5"
   echo
-  echo "2. Scaffold a motif using the downloaded 5TPN.pdb:"
-  echo "./scripts/run_rfdiffusion.sh motif_scaffold inference.input_pdb=/inputs/5TPN.pdb 'contigmap.contigs=[5-15/A10-25/30-40]' inference.num_designs=5"
+  echo "2. Scaffold a motif using 5TPN.pdb:"
+  echo "./scripts/run_rfdiffusion.sh motif_scaffold inference.input_pdb=/inputs/5TPN.pdb 'contigmap.contigs=[10-40/A163-181/10-40]' inference.num_designs=5"
   echo
   echo "3. Design a protein binder using 5TPN.pdb as target:"
-  echo "./scripts/run_rfdiffusion.sh binder inference.input_pdb=/inputs/5TPN.pdb 'contigmap.contigs=[B1-100/0 100-100]' 'ppi.hotspot_res=[B30,B33,B34]' inference.num_designs=5"
+  echo "./scripts/run_rfdiffusion.sh binder inference.input_pdb=/inputs/5TPN.pdb 'contigmap.contigs=[A163-181/0 100-100]' 'ppi.hotspot_res=[A170,A173,A174]' inference.num_designs=5"
   echo
   echo "4. Generate a symmetric tetramer:"
   echo "./scripts/run_rfdiffusion.sh symmetric_tetramer --config-name symmetry inference.symmetry=tetrahedral 'contigmap.contigs=[360]' inference.num_designs=1"
@@ -156,7 +171,9 @@ function show_examples() {
   echo "5. Design with reduced noise (better quality, less diversity):"
   echo "./scripts/run_rfdiffusion.sh high_quality 'contigmap.contigs=[150-150]' denoiser.noise_scale_ca=0.5 denoiser.noise_scale_frame=0.5 inference.num_designs=3"
   echo
-  echo "Run these commands from your rfdiffusion directory.
+  echo "Run these commands from your rfdiffusion directory."
+  echo "Note: Ensure the contig map matches your PDB file's chain and residue numbers."
+  echo "Check residues with: grep \"^ATOM\" inputs/5TPN.pdb | awk '{print \$5, \$6}' | sort | uniq"
 }
 
 show_examples
@@ -165,7 +182,8 @@ EOF
 # Make scripts executable
 chmod +x scripts/*.sh
 
-echo "RFdiffusion setup complete! Run ./scripts/download_models.sh to download model weights."
+echo "RFdiffusion setup complete!"
+echo "Run ./scripts/download_models.sh to download model weights."
 echo "Sample PDB file (5TPN.pdb) has been downloaded to the inputs directory."
 echo "See ./scripts/examples.sh for usage examples."
 ```
@@ -210,22 +228,24 @@ docker run --rm --gpus all nvidia/cuda:11.6.2-base-ubuntu20.04 nvidia-smi
 
 ```bash
 docker run -it --rm --gpus all \
-  -v /path/to/models:/app/RFdiffusion/models \
-  -v /path/to/inputs:/inputs \
-  -v /path/to/outputs:/outputs \
-  ghcr.io/biohacker0/rfdiffusion-public:public-v1 \
+  -v /path/to/models:/models:ro \
+  -v /path/to/inputs:/inputs:ro \
+  -v /path/to/outputs:/outputs:rw \
+  rfdiffusion:local \
   inference.output_prefix=/outputs/my_output \
+  inference.model_directory_path=/models \
   [additional arguments...]
 ```
 
 ### Essential Arguments
 
-| Argument                  | Description                              | Example                | Required?                  |
-| ------------------------- | ---------------------------------------- | ---------------------- | -------------------------- |
-| `inference.output_prefix` | Path for output files                    | `/outputs/test`        | Yes                        |
-| `contigmap.contigs`       | Defines protein structure to generate    | `[150-150]`            | Yes                        |
-| `inference.num_designs`   | Number of designs to generate            | `10`                   | Optional (default=1)       |
-| `inference.input_pdb`     | Input PDB file (for scaffolding/binding) | `/inputs/my_motif.pdb` | Required for certain tasks |
+| Argument                         | Description                              | Example                | Required?                  |
+| -------------------------------- | ---------------------------------------- | ---------------------- | -------------------------- |
+| `inference.output_prefix`        | Path for output files                    | `/outputs/test`        | Yes                        |
+| `inference.model_directory_path` | Path to models directory                 | `/models`              | Yes                        |
+| `contigmap.contigs`              | Defines protein structure to generate    | `[150-150]`            | Yes                        |
+| `inference.num_designs`          | Number of designs to generate            | `10`                   | Optional (default=1)       |
+| `inference.input_pdb`            | Input PDB file (for scaffolding/binding) | `/inputs/my_motif.pdb` | Required for certain tasks |
 
 ### Using the Wrapper Script
 
@@ -260,18 +280,18 @@ Design a protein that incorporates a functional motif:
 
 ```bash
 ./scripts/run_rfdiffusion.sh motif_scaffold \
-  inference.input_pdb=/inputs/my_motif.pdb \
-  'contigmap.contigs=[10-30/A10-25/30-50]' \
+  inference.input_pdb=/inputs/5TPN.pdb \
+  'contigmap.contigs=[10-40/A163-181/10-40]' \
   inference.num_designs=10
 ```
 
 **Key Considerations:**
 
-- `A10-25`: References residues 10-25 on chain A of input PDB
-- The model will build 10-30 residues before and 30-50 residues after the motif
+- `A163-181`: References residues 163-181 on chain A of input PDB
+- The model will build 10-40 residues before and 10-40 residues after the motif
 - For very small motifs (fewer than 5 residues), use the ActiveSite model:
   ```bash
-  inference.ckpt_override_path=/app/RFdiffusion/models/ActiveSite_ckpt.pt
+  inference.ckpt_override_path=/models/ActiveSite_ckpt.pt
   ```
 
 ### 3. Binder Design (PPI)
@@ -280,9 +300,9 @@ Design a protein that binds to a specific target:
 
 ```bash
 ./scripts/run_rfdiffusion.sh binder \
-  inference.input_pdb=/inputs/target.pdb \
-  'contigmap.contigs=[B1-100/0 100-100]' \
-  'ppi.hotspot_res=[B30,B33,B34]' \
+  inference.input_pdb=/inputs/5TPN.pdb \
+  'contigmap.contigs=[A163-181/0 100-100]' \
+  'ppi.hotspot_res=[A170,A173,A174]' \
   denoiser.noise_scale_ca=0.5 \
   denoiser.noise_scale_frame=0.5 \
   inference.num_designs=10
@@ -295,7 +315,7 @@ Design a protein that binds to a specific target:
 - **Noise reduction**: Lower noise scales (0.5) generally improves binder quality
 - **Diverse topologies**: To generate binders with more β-sheet content:
   ```bash
-  inference.ckpt_override_path=/app/RFdiffusion/models/Complex_beta_ckpt.pt
+  inference.ckpt_override_path=/models/Complex_beta_ckpt.pt
   ```
 
 ### 4. Symmetric Oligomer Design
@@ -332,29 +352,6 @@ potentials.guide_scale=2.0
 potentials.guide_decay=quadratic
 ```
 
-#### Symmetric Motif Scaffolding
-
-Scaffold motifs with symmetry:
-
-```bash
-./scripts/run_rfdiffusion.sh symmetric_motif \
-  --config-name symmetry \
-  inference.symmetry=c4 \
-  inference.input_pdb=/inputs/symmetric_motif.pdb \
-  'contigmap.contigs=[A1-15/5-10/A16-30]' \
-  potentials.guiding_potentials=["type:olig_contacts,weight_intra:1.0,weight_inter:0.5"] \
-  inference.num_designs=5
-```
-
-**Important notes for symmetric motif scaffolding:**
-
-- The input motif must be pre-symmetrized according to RFdiffusion's canonical symmetry axes
-- The motif should be centered at the origin
-- Canonical symmetry axes:
-  - Cyclic: Z-axis
-  - Dihedral (cyclic): Z-axis
-  - Dihedral (flip/reflection): X-axis
-
 ### 5. Structure Diversification (Partial Diffusion)
 
 Create variations of an existing protein structure:
@@ -382,44 +379,37 @@ The `contigmap.contigs` argument defines the protein structure using a specializ
 
 ### Basic Patterns
 
-| Pattern  | Explanation                              | Example                |
-| -------- | ---------------------------------------- | ---------------------- |
-| `[N]`    | Fixed length N                           | `[150]`                |
-| `[N-M]`  | Length range from N to M                 | `[100-150]`            |
-| `[N/M]`  | Sections N and M connected               | `[10-20/A10-25/30-40]` |
-| `/0 `    | Chain break (space required)             | `[A1-100/0 B1-100]`    |
-| `A10-25` | Residues 10-25 from chain A of input PDB | `[10-20/A10-25/10-20]` |
+| Pattern  | Explanation                              | Example                  |
+| -------- | ---------------------------------------- | ------------------------ |
+| `[N]`    | Fixed length N                           | `[150]`                  |
+| `[N-M]`  | Length range from N to M                 | `[100-150]`              |
+| `[N/M]`  | Sections N and M connected               | `[10-40/A163-181/10-40]` |
+| `/0 `    | Chain break (space required)             | `[A1-100/0 B1-100]`      |
+| `A10-25` | Residues 10-25 from chain A of input PDB | `[10-20/A10-25/10-20]`   |
 
 ### Visual Examples
 
 ```
-[5-15/A10-25/30-40]
- ▲      ▲      ▲
- │      │      │
- │      │      └── Build 30-40 residues after motif
- │      └────────── Use residues 10-25 from chain A of input PDB
- └─────────────── Build 5-15 residues before motif
+[10-40/A163-181/10-40]
+ ▲      ▲         ▲
+ │      │         │
+ │      │         └── Build 10-40 residues after motif
+ │      └─────────── Use residues 163-181 from chain A of input PDB
+ └─────────────── Build 10-40 residues before motif
 
-[B1-100/0 100-100]
- ▲       ▲ ▲
- │       │ │
- │       │ └── Build a 100-residue protein
- │       └──── Chain break (separate chain)
- └──────────── Use residues 1-100 from chain B of input PDB as target
+[A163-181/0 100-100]
+ ▲          ▲ ▲
+ │          │ │
+ │          │ └── Build a 100-residue protein
+ │          └──── Chain break (separate chain)
+ └───────────── Use residues 163-181 from chain A of input PDB as target
 ```
 
-### Advanced Patterns
+**Important**: Always check that your contig map references chains and residue numbers that actually exist in your PDB file. You can check available residues with:
 
-| Pattern                                        | Explanation                                       | Example Usage                               |
-| ---------------------------------------------- | ------------------------------------------------- | ------------------------------------------- |
-| `contigmap.inpaint_seq=[A1/A30-40]`            | Mask sequence identity of residues                | For interfaces that change environment      |
-| `contigmap.provide_seq=[100-119]`              | Keep sequence fixed for specific residues         | For partial diffusion with fixed sequences  |
-| `contigmap.inpaint_str=[B165-178]`             | Mask structure of specific residues               | For flexible peptide design                 |
-| `contigmap.inpaint_str_helix=[B1-15]`          | Specify helical structure for masked residues     | For peptide binding in helical conformation |
-| `contigmap.inpaint_str_strand=[B1-15]`         | Specify beta-strand structure for masked residues | For peptide binding in strand conformation  |
-| `contigmap.inpaint_seq_list=/path/to/list.txt` | File with list of residues to mask                | For complex masking patterns                |
-| `contigmap.tied_positions=1,10`                | Force residue pairs to same position              | For symmetry constraints                    |
-| `contigmap.length=150-150`                     | Force specific total length                       | Override default length sampling            |
+```bash
+grep "^ATOM" inputs/5TPN.pdb | awk '{print $5, $6}' | sort | uniq
+```
 
 ## Model Checkpoints
 
@@ -443,63 +433,8 @@ Hide sequence identity of specific residues when scaffolding:
 ```bash
 ./scripts/run_rfdiffusion.sh inpaint_seq \
   inference.input_pdb=/inputs/my_structure.pdb \
-  'contigmap.contigs=[5-15/A10-25/5-15]' \
+  'contigmap.contigs=[10-20/A10-25/10-20]' \
   'contigmap.inpaint_seq=[A15-20]' \
-  inference.num_designs=5
-```
-
-### Fold Conditioning
-
-Design proteins with specific secondary structure topology:
-
-```bash
-./scripts/run_rfdiffusion.sh fold_guided \
-  scaffoldguided.scaffoldguided=True \
-  scaffoldguided.scaffold_dir=/inputs/ppi_scaffolds_subset \
-  'contigmap.contigs=[100-100]' \
-  inference.num_designs=5
-```
-
-#### Advanced Fold Conditioning Options
-
-```bash
-# Mask loop regions and allow insertions
-scaffoldguided.mask_loops=True
-scaffoldguided.sampled_insertion=15  # Insert up to 15 residues in loops
-scaffoldguided.sampled_N=5  # Add up to 5 residues at N-terminus
-scaffoldguided.sampled_C=5  # Add up to 5 residues at C-terminus
-
-# For target proteins (PPI)
-scaffoldguided.target_pdb=True
-scaffoldguided.target_path=/inputs/target.pdb
-scaffoldguided.target_ss=/inputs/fold_templates/target_ss.pt
-scaffoldguided.target_adj=/inputs/fold_templates/target_adj.pt
-
-# Use specific subset of scaffold templates
-scaffoldguided.scaffold_list=/inputs/scaffold_list.txt
-```
-
-#### Creating Fold Templates
-
-Use the helper script to generate secondary structure and adjacency templates:
-
-```bash
-# Inside container
-python /app/RFdiffusion/helper_scripts/make_secstruc_adj.py \
-  --input_pdb /inputs/my_template.pdb \
-  --out_dir /outputs/fold_templates
-```
-
-### Flexible Peptide Binding
-
-Design binders for peptides with specified secondary structure:
-
-```bash
-./scripts/run_rfdiffusion.sh peptide_binder \
-  inference.input_pdb=/inputs/peptide.pdb \
-  'contigmap.contigs=[70-100/0 B1-15]' \
-  'contigmap.inpaint_str=[B1-15]' \
-  'contigmap.inpaint_str_helix=[B1-15]' \
   inference.num_designs=5
 ```
 
@@ -523,25 +458,6 @@ Guide the diffusion process with additional constraints:
 - `substrate_contacts`: Optimizes contacts with substrate/target
 - `helix_bias`: Encourages helical secondary structure
 - `sheet_bias`: Encourages β-sheet/strand secondary structure
-- `contopology`: Controls the contact topology (advanced)
-- `voids`: Reduces internal voids and improves packing
-
-**Using Multiple Potentials:**
-
-```bash
-# Example combining multiple potentials with different weights
-potentials.guiding_potentials=[\"type:monomer_ROG,weight:1.0\",\"type:olig_contacts,weight_intra:1,weight_inter:0.1\"]
-potentials.olig_intra_all=True  # Use all residues for intra-chain contacts
-potentials.olig_inter_all=True  # Use all residues for inter-chain contacts
-potentials.substrate=True       # Enable substrate-mediated potentials
-```
-
-**Potential Decay Options:**
-
-- `potentials.guide_decay=constant` - Maintains constant influence
-- `potentials.guide_decay=linear` - Linear decrease in influence
-- `potentials.guide_decay=quadratic` - Quadratic decrease (recommended)
-- `potentials.guide_decay=cubic` - Cubic decrease (sharpest drop-off)
 
 ### Controlling Diffusion Parameters
 
@@ -554,51 +470,6 @@ diffuser.T=20
 
 # Stop diffusion early for faster generation
 inference.final_step=0.2
-
-# Control sampling
-diffuser.alpha=1.0  # Controls noise scheduler (0.5-1.5 is reasonable range)
-diffuser.disable_noise=False  # Set to True for deterministic diffusion
-
-# Advanced frame control
-denoiser.torsion_scale=0.5  # Scale torsional noise
-denoiser.torsion_epochs=10  # Training epochs for torsional prediction
-```
-
-### Inference Sampling Options
-
-Additional options for controlling the sampling process:
-
-```bash
-# Sample specific number of designs from the same diffusion trajectory
-inference.multistate_values=10      # Number of samples per trajectory
-inference.multistate_traj=True      # Enable multistate sampling
-
-# Set random seed for reproducibility
-inference.random_seed=42
-
-# Control output verbosity and files
-inference.write_trajectory=True     # Write full trajectory files
-inference.write_npy=True            # Write numpy array versions of outputs
-inference.verbose=True              # Show verbose output
-```
-
-### Preprocess Options
-
-Control how input structures are processed:
-
-```bash
-# Chain indexing
-preprocess.chain_index_offset=1000  # Offset for new chain indices
-
-# Input feature control
-preprocess.suppress_sequence_in_context=False  # Hide sequence in context
-preprocess.suppress_design_context=False       # Suppress design context
-
-# Residue handling
-preprocess.select_residues=None  # Residue subset for processing
-preprocess.rigidify=False        # Treat inputs as rigid bodies
-preprocess.pad=0                 # Padding for inputs
-preprocess.drop_sequence=False   # Drop sequence information
 ```
 
 ## Output Files
@@ -663,8 +534,8 @@ For each design, RFdiffusion generates:
    ```bash
    ./scripts/run_rfdiffusion.sh binder_v1 \
      inference.input_pdb=/inputs/target_truncated.pdb \
-     'contigmap.contigs=[B1-150/0 100-100]' \
-     'ppi.hotspot_res=[B30,B33,B34,B40]' \
+     'contigmap.contigs=[A163-181/0 100-100]' \
+     'ppi.hotspot_res=[A170,A173,A174]' \
      denoiser.noise_scale_ca=0.5 \
      denoiser.noise_scale_frame=0.5 \
      inference.num_designs=50
@@ -676,24 +547,3 @@ For each design, RFdiffusion generates:
 
 4. **Evaluate Designs**:
    - Use AlphaFold2 to predict structure and assess binding interface
-   - Filter for designs with pAE_interaction < 10
-
-### Enzyme Design Workflow
-
-1. **Prepare Active Site Motif**:
-
-   - Isolate catalytic residues and substrate binding site
-
-2. **Generate Scaffolds**:
-
-   ```bash
-   ./scripts/run_rfdiffusion.sh enzyme_scaffold \
-     inference.input_pdb=/inputs/active_site.pdb \
-     'contigmap.contigs=[50-70/A10-25/50-70]' \
-     inference.ckpt_override_path=/app/RFdiffusion/models/ActiveSite_ckpt.pt \
-     inference.num_designs=20
-   ```
-
-3. **Design and Evaluate**:
-   - Add sequences with ProteinMPNN
-   - Evaluate with computational docking, Rosetta energy calculations, or MD simulations
