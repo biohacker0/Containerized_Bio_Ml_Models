@@ -6,7 +6,6 @@ This is a cleaner version of the official repository, making it easy to set up, 
 
 ## Table of Contents
 
-- [Quick Start](#quick-start)
 - [Setup Scripts](#setup-scripts)
 - [System Requirements](#system-requirements)
 - [Basic Usage](#basic-usage)
@@ -28,35 +27,6 @@ Container Image:
 
 ```bash
 docker pull ghcr.io/biohacker0/rfdiffusion-new:local
-```
-
-## Quick Start
-
-```bash
-# Pull the container
-docker pull ghcr.io/biohacker0/rfdiffusion-new:local
-
-# Create directories for inputs, outputs, and models
-mkdir -p $HOME/rfdiffusion/{inputs,outputs,models}
-
-# Download sample PDB file to inputs directory
-wget -P $HOME/rfdiffusion/inputs https://files.rcsb.org/download/5TPN.pdb
-
-# Download models (one-time setup)
-cd $HOME/rfdiffusion/models
-wget http://files.ipd.uw.edu/pub/RFdiffusion/6f5902ac237024bdd0c176cb93063dc4/Base_ckpt.pt
-wget http://files.ipd.uw.edu/pub/RFdiffusion/e29311f6f1bf1af907f9ef9f44b8328b/Complex_base_ckpt.pt
-
-# Basic run to generate a 150-residue protein
-docker run -it --rm --gpus all \
-  -v $HOME/rfdiffusion/models:/models:ro \
-  -v $HOME/rfdiffusion/inputs:/inputs:ro \
-  -v $HOME/rfdiffusion/outputs:/outputs:rw \
-  rfdiffusion:local \
-  inference.output_prefix=/outputs/basic_test \
-  inference.model_directory_path=/models \
-  'contigmap.contigs=[150-150]' \
-  inference.num_designs=1
 ```
 
 ## Setup Scripts
