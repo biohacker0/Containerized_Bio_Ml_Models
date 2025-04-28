@@ -18,7 +18,7 @@ Setting up computational biology models often requires navigating complex depend
 | RFdiffusion | Protein structure generation with diffusion    | Available   |
 | ESMFold     | Fast and accurate protein structure prediction | Coming soon |
 | AlphaFold2  | State-of-the-art protein structure prediction  | Coming soon |
-| ProteinMPNN | Protein sequence design                        | Coming soon |
+| ProteinMPNN | Protein sequence design                        | Available   |
 
 ## System Requirements
 
